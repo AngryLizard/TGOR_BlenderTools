@@ -123,8 +123,8 @@ class TGOR_OT_ColorizeVertices(Operator):
         
         # Decide which vertex color map to use
         vertex_color = context.active_object.data.vertex_colors.active
-        if context.scene.tgor_vertex_color_selection in context.active_object.data.vertex_colors:
-            vertex_color = context.active_object.data.vertex_colors[context.scene.tgor_vertex_color_selection]
+        if self.color_selection in context.active_object.data.vertex_colors:
+            vertex_color = context.active_object.data.vertex_colors[self.color_selection]
         
         if not vertex_color:
             self.report({'ERROR_INVALID_INPUT'}, "No vertex color selected or active")
@@ -157,11 +157,12 @@ class TGOR_OT_ColorizeVertices(Operator):
         for vertex in context.active_object.data.vertices:
             U.add(vertex.index)   
             for group in vertex.groups:
-                name = context.active_object.vertex_groups[group.group].name
-                if name in context.scene.tgor_vertex_colorizations:
-                    G[name].append(vertex.index)
-                    U.remove(vertex.index)
-                    break
+                if group.weight > 0.1:
+                    name = context.active_object.vertex_groups[group.group].name
+                    if name in context.scene.tgor_vertex_colorizations:
+                        G[name].append(vertex.index)
+                        U.remove(vertex.index)
+                        break
                 
         # Build shortest paths for each group
         C = [Vector((0,0,0,1))] * count # Output Colors
