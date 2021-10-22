@@ -101,6 +101,20 @@ class TGOR_OT_ColorizeVertices(Operator):
     
     iterations: IntProperty(default=20, min=1)
     color_selection: StringProperty()
+    weighting : EnumProperty(
+        items=(
+            ('POLY', 'Polynomial', "Polynomial interpolation"),
+            ('LAPL', 'Laplacian', "Laplacian interpolation")
+        ),
+        name="Weighting algorithm",
+        description="Choose weight algorithm",
+        default='POLY',
+        update=None,
+        get=None,
+        set=None)
+        
+        
+        
     
     def check(self, context):
         return True
@@ -115,6 +129,7 @@ class TGOR_OT_ColorizeVertices(Operator):
         layout = self.layout
         
         row = layout.row()
+        row.prop(self, "weighting", text="Weighting")
         row.prop(self, "iterations", text="Iterations")
         layout.prop_search(self, "color_selection", context.active_object.data, "vertex_colors", text="", icon='COLOR')
         
@@ -195,16 +210,36 @@ class TGOR_OT_ColorizeVertices(Operator):
         # Build vertex colors for yet unassigned vertices
         for u in U:
             
-            w = 0.0
-            c = Vector((0,0,0,0))
-            for name in G:
-                d = D[name][u]
-                f = W[name] / max(d, 0.0001) # Avoid division by zero
-                c += O[name] * f
-                w += f
-            
-            if w > 0.0001:
-                C[u] = c / w
+            if self.weighting == 'POLY':
+                c = Vector((0,0,0,0))
+                for name in G:
+                    
+                    w = W[name]
+                    d = D[name][u]
+                    
+                    f = 1.0
+                    for other in G:
+                        if other != name:
+                            e = D[other][u] * w
+                            f *= e / (d + e)
+                            
+                    c += O[name] * f
+                
+                C[u] = c
+                
+            else:
+                w = 0.0
+                c = Vector((0,0,0,0))
+                for name in G:
+                    
+                    d = D[name][u]
+                    
+                    f = W[name] / max(d, 0.0001) # Avoid division by zero
+                    c += O[name] * f
+                    w += f
+                
+                if w > 0.0001:
+                    C[u] = c / w
         
         # Actually set the color according to defined mask
         for loop in context.active_object.data.loops:
