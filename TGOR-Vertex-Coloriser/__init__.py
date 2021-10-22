@@ -214,13 +214,12 @@ class TGOR_OT_ColorizeVertices(Operator):
                 c = Vector((0,0,0,0))
                 for name in G:
                     
-                    w = W[name]
-                    d = D[name][u]
+                    d = D[name][u] / W[name]
                     
                     f = 1.0
                     for other in G:
                         if other != name:
-                            e = D[other][u] * w
+                            e = D[other][u] / W[other]
                             f *= e / (d + e)
                             
                     c += O[name] * f
