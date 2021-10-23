@@ -23,6 +23,7 @@ import math
 
 class TGOR_VertexColorizationEntry(PropertyGroup):
     
+    enabled: BoolProperty(default=True)
     red: FloatProperty(default=0.0, min=0.0, max=1.0)
     green: FloatProperty(default=0.0, min=0.0, max=1.0)
     blue: FloatProperty(default=0.0, min=0.0, max=1.0)
@@ -108,7 +109,7 @@ class TGOR_OT_ColorizeVertices(Operator):
         ),
         name="Weighting algorithm",
         description="Choose weight algorithm",
-        default='POLY',
+        default='LAPL',
         update=None,
         get=None,
         set=None)
@@ -121,7 +122,10 @@ class TGOR_OT_ColorizeVertices(Operator):
     
     def invoke(self, context, event):
         
-        self.color_selection = context.active_object.data.vertex_colors.active.name
+        self.color_selection = ""
+        if context.active_object.data.vertex_colors.active:
+            self.color_selection = context.active_object.data.vertex_colors.active.name
+            
         wm = context.window_manager  # there are some other functions here
         return wm.invoke_props_dialog(self)
     
@@ -144,7 +148,11 @@ class TGOR_OT_ColorizeVertices(Operator):
         if not vertex_color:
             self.report({'ERROR_INVALID_INPUT'}, "No vertex color selected or active")
             return {'FINISHED'}
-            
+        
+        # Extract enabled groups
+        colorizations = {key: value for key,value in context.scene.tgor_vertex_colorizations.items()
+                         if key in context.active_object.vertex_groups and value.enabled == True}
+        
         diameter = max(context.active_object.dimensions)
         count = len(context.active_object.data.vertices)
         
@@ -168,13 +176,13 @@ class TGOR_OT_ColorizeVertices(Operator):
         
         # Build groups
         U = set() # All vertices outside of groups
-        G = {key: [] for key in context.scene.tgor_vertex_colorizations.keys()} # Vertices per group
+        G = {key: [] for key in colorizations} # Vertices per group
         for vertex in context.active_object.data.vertices:
             U.add(vertex.index)   
             for group in vertex.groups:
                 if group.weight > 0.1:
                     name = context.active_object.vertex_groups[group.group].name
-                    if name in context.scene.tgor_vertex_colorizations:
+                    if name in colorizations:
                         G[name].append(vertex.index)
                         U.remove(vertex.index)
                         break
@@ -189,7 +197,7 @@ class TGOR_OT_ColorizeVertices(Operator):
             d = [diameter] * count
             
             for group_vertex in group_vertices:
-                colorization = context.scene.tgor_vertex_colorizations[name]
+                colorization = colorizations[name]
                 
                 color = Vector((colorization.red, colorization.green, colorization.blue, colorization.alpha))
                 C[group_vertex] = O[name] = color
@@ -263,7 +271,9 @@ class TGOR_UL_vertex_colorization_list(UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index, flt_flag):
         
         split = layout.split(factor=0.25)
-        split.label(text=item.name)
+        row = split.row()
+        row.prop(item, "enabled", text="")
+        row.label(text=item.name)
         row = split.row()
         row.prop(item, "red", text="")
         row.prop(item, "green", text="")
@@ -280,11 +290,11 @@ class TGOR_UL_vertex_colorization_list(UIList):
 
 class TGOR_PT_VertexColorizationPanel(Panel):
     """Palette group""" 
-    bl_idname = "TGOR_PT_VertexColorizationPanel"
+    bl_idname = "TGOR_PT_VertexColorization"
     bl_label = "Colorization"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = 'Tool'
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_options = {'DEFAULT_CLOSED'}
     
 #   Draw the menu elements
     def draw(self, context):
@@ -324,7 +334,7 @@ class TGOR_PT_VertexColorizationPanel(Panel):
         
     @classmethod
     def poll(cls, context):
-        return context.mode == 'PAINT_VERTEX' and context.active_object and context.active_object.type == 'MESH'
+        return context.active_object and context.active_object.type == 'MESH'
 
 classes = (
     TGOR_PT_VertexColorizationPanel,

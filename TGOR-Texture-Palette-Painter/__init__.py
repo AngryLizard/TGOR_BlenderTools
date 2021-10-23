@@ -42,6 +42,10 @@ palette_grid_cells = [
 [("FeeUS", "Feet under / Soles (details)"), ("BBPUD", "Belly / Bellyplates / Undertail (details)"), ("SAWU", "Shoulder / Arm / Wing under (details)"), ("HECHC", "Head / Chin / Cheek (details)")]
 ];
 
+
+preview_collections = {}
+preview_dirty = True
+
 ####################################################################################################
 ########################################### OPERATOR ###############################################
 ####################################################################################################
@@ -63,8 +67,34 @@ class TGOR_OT_PaletteColorSet(Operator):
     
     def execute(self, context):
         context.tool_settings.image_paint.brush.color = self.color
+        context.tool_settings.image_paint.brush.blend = 'MIX'
         return {'FINISHED'}
 
+class TGOR_OT_PaletteColorAdd(Operator):
+    bl_label = "Palette Color Add"
+    bl_idname = "scene.tgor_palette_add_operator"
+    bl_description = "Set color to add"
+    
+    def check(self, context):
+        return True
+    
+    def execute(self, context):
+        context.tool_settings.image_paint.brush.color = (0,0,1)
+        context.tool_settings.image_paint.brush.blend = 'ADD'
+        return {'FINISHED'}
+    
+class TGOR_OT_PaletteColorSubtract(Operator):
+    bl_label = "Palette Color Subtract"
+    bl_idname = "scene.tgor_palette_subtract_operator"
+    bl_description = "Set color to subtract"
+    
+    def check(self, context):
+        return True
+    
+    def execute(self, context):
+        context.tool_settings.image_paint.brush.color = (0,0,1)
+        context.tool_settings.image_paint.brush.blend = 'SUB'
+        return {'FINISHED'}
 
 ####################################################################################################
 ############################################# PANEL ################################################
@@ -80,10 +110,15 @@ class TGOR_PT_PalettePanel(Panel):
     
 #   Draw the menu elements
     def draw(self, context):
+        global preview_dirty
         layout = self.layout
         
         layout.template_ID(context.scene, "tgor_palette_image", new="image.new", open="image.open")
         preview = context.scene.tgor_palette_image
+        
+        row = layout.row(align=True)
+        row.operator("scene.tgor_palette_add_operator", text="Add", icon="ADD")
+        row.operator("scene.tgor_palette_subtract_operator", text="Subtract", icon="REMOVE")
         
         cols = 4
         rows = len(palette_grid_cells)
@@ -99,19 +134,21 @@ class TGOR_PT_PalettePanel(Panel):
                     if preview:
                         
                         icon = icons["icon" + str(y) + str(x)]
-                        sx = (preview.size[0] / cols)
-                        sy = (preview.size[1] / rows)
-                        
-                        for cx in range(0,icon_size):
-                            for cy in range(0, icon_size):
-                                
-                                px = int(sx * x + icon_xmargin + (sx - icon_xmargin * 2) * cx / icon_size)
-                                py = int(sy * y + icon_ymargin + (sy - icon_ymargin * 2) * cy / icon_size)
-                                pi = ((preview.size[1]-1 - py) * preview.size[0] + px) * 4
-                                
-                                ci = ((icon_size-1 - cy) * icon_size + cx) * 4
-                                icon.icon_pixels_float[ci:ci+4] = preview.pixels[pi:pi+4]
-                                
+                            
+                        if preview_dirty:
+                            sx = (preview.size[0] / cols)
+                            sy = (preview.size[1] / rows)
+                            
+                            for cx in range(0,icon_size):
+                                for cy in range(0, icon_size):
+                                    
+                                    px = int(sx * x + icon_xmargin + (sx - icon_xmargin * 2) * cx / icon_size)
+                                    py = int(sy * y + icon_ymargin + (sy - icon_ymargin * 2) * cy / icon_size)
+                                    pi = ((preview.size[1]-1 - py) * preview.size[0] + px) * 4
+                                    
+                                    ci = ((icon_size-1 - cy) * icon_size + cx) * 4
+                                    icon.icon_pixels_float[ci:ci+4] = preview.pixels[pi:pi+4]
+                            
                         ops = grid.operator("scene.tgor_palette_set_operator", text=name, icon_value=icon.icon_id)
                     else:
                         ops = grid.operator("scene.tgor_palette_set_operator", text=name)
@@ -120,7 +157,7 @@ class TGOR_PT_PalettePanel(Panel):
                     ops.color = [(float(x) + 0.5) / (cols-1), (float(y) + 0.5) / rows, 0.0]
                     ops.tooltip = tooltip
         
-                
+        preview_dirty = False
 
     @classmethod
     def poll(cls, context):
@@ -128,19 +165,25 @@ class TGOR_PT_PalettePanel(Panel):
 
 classes = (
     TGOR_PT_PalettePanel,
-    TGOR_OT_PaletteColorSet
+    TGOR_OT_PaletteColorSet,
+    TGOR_OT_PaletteColorAdd,
+    TGOR_OT_PaletteColorSubtract
 )
 
-preview_collections = {}
+def on_palette_change(self, context):
+    global preview_dirty
+    preview_dirty = True
 
 # Register
 def register():
+    global preview_dirty
 
     from bpy.utils import register_class
     for c in classes:
         register_class(c)
     
-    bpy.types.Scene.tgor_palette_image = PointerProperty(type=bpy.types.Image)
+    bpy.types.Scene.tgor_palette_image = PointerProperty(type=bpy.types.Image, update=on_palette_change)
+    preview_dirty = True
         
     icons = bpy.utils.previews.new()
     
@@ -156,6 +199,8 @@ def register():
     preview_collections["main"] = icons
 
 def unregister():
+    
+    preview_collections["main"] = {}
     
     for icons in preview_collections.values():
         bpy.utils.previews.remove(icons)
