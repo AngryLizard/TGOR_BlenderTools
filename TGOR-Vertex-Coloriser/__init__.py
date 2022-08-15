@@ -28,6 +28,8 @@ class TGOR_VertexColorizationEntry(PropertyGroup):
     green: FloatProperty(default=0.0, min=0.0, max=1.0)
     blue: FloatProperty(default=0.0, min=0.0, max=1.0)
     alpha: FloatProperty(default=1.0, min=0.0, max=1.0)
+    UVu: FloatProperty(default=0.0, min=0.0, max=1.0)
+    UVv: FloatProperty(default=0.0, min=0.0, max=1.0)
     weight: FloatProperty(default=1.0, min=0.01, max=5.0)
     
 class TGOR_VertexColorizationOptions(PropertyGroup):
@@ -36,6 +38,8 @@ class TGOR_VertexColorizationOptions(PropertyGroup):
     green: BoolProperty(default=True)
     blue: BoolProperty(default=False)
     alpha: BoolProperty(default=False)
+    UVu: BoolProperty(default=False)
+    UVv: BoolProperty(default=False)
     
 ####################################################################################################
 ########################################### OPERATOR ###############################################
@@ -102,6 +106,7 @@ class TGOR_OT_ColorizeVertices(Operator):
     
     iterations: IntProperty(default=20, min=1)
     color_selection: StringProperty()
+    uv_selection: StringProperty()
     weighting : EnumProperty(
         items=(
             ('POLY', 'Polynomial', "Polynomial interpolation"),
@@ -114,9 +119,6 @@ class TGOR_OT_ColorizeVertices(Operator):
         get=None,
         set=None)
         
-        
-        
-    
     def check(self, context):
         return True
     
@@ -125,6 +127,10 @@ class TGOR_OT_ColorizeVertices(Operator):
         self.color_selection = ""
         if context.active_object.data.vertex_colors.active:
             self.color_selection = context.active_object.data.vertex_colors.active.name
+
+        self.uv_selection = ""
+        if context.active_object.data.uv_layers.active:
+            self.uv_selection = context.active_object.data.uv_layers.active.name
             
         wm = context.window_manager  # there are some other functions here
         return wm.invoke_props_dialog(self)
@@ -136,6 +142,7 @@ class TGOR_OT_ColorizeVertices(Operator):
         row.prop(self, "weighting", text="Weighting")
         row.prop(self, "iterations", text="Iterations")
         layout.prop_search(self, "color_selection", context.active_object.data, "vertex_colors", text="", icon='COLOR')
+        layout.prop_search(self, "uv_selection", context.active_object.data, "uv_layers", text="", icon='COLOR')
         
     
     def execute(self, context):
@@ -144,11 +151,19 @@ class TGOR_OT_ColorizeVertices(Operator):
         vertex_color = context.active_object.data.vertex_colors.active
         if self.color_selection in context.active_object.data.vertex_colors:
             vertex_color = context.active_object.data.vertex_colors[self.color_selection]
-        
+
         if not vertex_color:
             self.report({'ERROR_INVALID_INPUT'}, "No vertex color selected or active")
             return {'FINISHED'}
         
+        vertex_uv = context.active_object.data.uv_layers.active
+        if self.uv_selection in context.active_object.data.uv_layers:
+            vertex_uv = context.active_object.data.uv_layers[self.uv_selection]
+
+        if not vertex_uv:
+            self.report({'ERROR_INVALID_INPUT'}, "No vertex UV selected or active")
+            return {'FINISHED'}
+
         # Extract enabled groups
         colorizations = {key: value for key,value in context.scene.tgor_vertex_colorizations.items()
                          if key in context.active_object.vertex_groups and value.enabled == True}
@@ -188,7 +203,7 @@ class TGOR_OT_ColorizeVertices(Operator):
                         break
                 
         # Build shortest paths for each group
-        C = [Vector((0,0,0,1))] * count # Output Colors
+        C = [Vector((0,0,0,1,0,0))] * count # Output Colors
         D = {} # Vertex min path distances for each group
         W = {} # Weight for each group
         O = {} # output color for each group
@@ -199,7 +214,7 @@ class TGOR_OT_ColorizeVertices(Operator):
             for group_vertex in group_vertices:
                 colorization = colorizations[name]
                 
-                color = Vector((colorization.red, colorization.green, colorization.blue, colorization.alpha))
+                color = Vector((colorization.red, colorization.green, colorization.blue, colorization.alpha, colorization.UVu, colorization.UVv))
                 C[group_vertex] = O[name] = color
                 W[name] = colorization.weight
                 
@@ -219,7 +234,7 @@ class TGOR_OT_ColorizeVertices(Operator):
         for u in U:
             
             if self.weighting == 'POLY':
-                c = Vector((0,0,0,0))
+                c = Vector((0,0,0,0,0,0))
                 for name in G:
                     
                     d = D[name][u] / W[name]
@@ -236,7 +251,7 @@ class TGOR_OT_ColorizeVertices(Operator):
                 
             else:
                 w = 0.0
-                c = Vector((0,0,0,0))
+                c = Vector((0,0,0,0,0,0))
                 for name in G:
                     
                     d = D[name][u]
@@ -258,6 +273,10 @@ class TGOR_OT_ColorizeVertices(Operator):
                 vertex_color.data[loop.index].color[2] = C[loop.vertex_index][2]
             if context.scene.tgor_vertex_options.alpha:
                 vertex_color.data[loop.index].color[3] = C[loop.vertex_index][3]
+            if context.scene.tgor_vertex_options.UVu:
+                vertex_uv.data[loop.index].uv[0] = C[loop.vertex_index][4]
+            if context.scene.tgor_vertex_options.UVv:
+                vertex_uv.data[loop.index].uv[1] = C[loop.vertex_index][5]
         
                         
         return {'FINISHED'}
@@ -279,6 +298,8 @@ class TGOR_UL_vertex_colorization_list(UIList):
         row.prop(item, "green", text="")
         row.prop(item, "blue", text="")
         row.prop(item, "alpha", text="")
+        row.prop(item, "UVu", text="")
+        row.prop(item, "UVv", text="")
         row.prop(item, "weight", text="")
 
     def invoke(self, context, event):
@@ -320,6 +341,8 @@ class TGOR_PT_VertexColorizationPanel(Panel):
         row.prop(context.scene.tgor_vertex_options, "green", text="Green")
         row.prop(context.scene.tgor_vertex_options, "blue", text="Blue")
         row.prop(context.scene.tgor_vertex_options, "alpha", text="Alpha")
+        row.prop(context.scene.tgor_vertex_options, "UVu", text="U")
+        row.prop(context.scene.tgor_vertex_options, "UVv", text="V")
         row.label(text="Weight")
         
         row = col.row(align=True)
