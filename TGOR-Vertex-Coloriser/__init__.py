@@ -357,7 +357,7 @@ class TGOR_PT_VertexColorizationPanel(Panel):
         
     @classmethod
     def poll(cls, context):
-        return context.active_object and context.active_object.type == 'MESH'
+        return context.active_object and context.active_object.type == 'MESH' and context.mode == 'PAINT_VERTEX'
 
 classes = (
     TGOR_PT_VertexColorizationPanel,
